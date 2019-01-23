@@ -15,6 +15,7 @@ import argparse
 import random
 import torch
 import gc
+import os
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
@@ -22,6 +23,9 @@ from utils.metric import get_ner_fmeasure
 from model.seqlabel import SeqLabel
 from model.sentclassifier import SentClassifier
 from utils.data import Data
+
+from time import gmtime, strftime
+import shutil
 
 try:
     import cPickle as pickle
@@ -160,7 +164,7 @@ def lr_decay(optimizer, epoch, decay_rate, init_lr):
 
 
 
-def evaluate(data, model, name, last_epoch=False, nbest=None):
+def evaluate(data, model, name, dir_name, last_epoch=False, nbest=None):
     if name == "train":
         instances = data.train_Ids
     elif name == "dev":
@@ -210,7 +214,7 @@ def evaluate(data, model, name, last_epoch=False, nbest=None):
     speed = len(instances)/decode_time
 
     if last_epoch:
-        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, data.tagScheme, save_confusion_matrix=True)
+        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, dir_name, data.tagScheme, save_confusion_matrix=True)
     else:
         acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, data.tagScheme)
 
@@ -383,21 +387,36 @@ def batchify_sentence_classification_with_label(input_batch_list, gpu, if_train=
     return word_seq_tensor,feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
 
 
-def plot_training_history(history: dict):
+def plot_training_history(history: dict, dir_name):
+    plt.clf()
+
     for metric in history.keys():
-        plt.plot(history[metric])
+        plt.plot(history[metric], label=metric)
 
-    plt.savefig('training_history.png')
-
-
-def confusion_matrix():
-    pass
+    plt.legend(history.keys())
+    plt.savefig(dir_name + '/training_history.png')
 
 
-def train(data):
+def train(data, config_file):
     print("Training model...")
     data.show_data_summary()
     print('tag scheme', data.tagScheme)
+
+    time_stamp = strftime("%H:%M:%S", gmtime())
+
+    # Create a directory to store experiment results:
+    experiment_dir_name = 'experiments_results/experiment_' + str(time_stamp) + '/'
+
+    if not os.path.exists(experiment_dir_name):
+        os.makedirs(experiment_dir_name)
+
+        print('Created directory', experiment_dir_name)
+
+    else:
+        exit()
+
+    shutil.copy(config_file, experiment_dir_name)
+
     save_data_name = data.model_dir +".dset"
     data.save(save_data_name)
     if data.sentence_classification:
@@ -425,7 +444,8 @@ def train(data):
     history = {'accuracy': [],
                'precision': [],
                'recall': [],
-               'f1': []}
+               'f1': [],
+               'total-loss': []}
 
     print(data.HP_iteration)
 
@@ -491,15 +511,22 @@ def train(data):
             print("ERROR: LOSS EXPLOSION (>1e8) ! PLEASE SET PROPER PARAMETERS AND STRUCTURE! EXIT....")
             exit(1)
         # continue
+
+        # If last epoch
         if idx + 1 == data.HP_iteration:
-            speed, acc, p, r, f, _,_ = evaluate(data, model, "dev", last_epoch=True)
+            speed, acc, p, r, f, _,_ = evaluate(data, model, "dev", experiment_dir_name, last_epoch=True)
         else:
-            speed, acc, p, r, f, _, _ = evaluate(data, model, "dev")
+            speed, acc, p, r, f, _, _ = evaluate(data, model, "dev", experiment_dir_name,)
 
         history['accuracy'].append(acc)
         history['precision'].append(p)
         history['recall'].append(r)
         history['f1'].append(f)
+        history['total-loss'].append(total_loss / 10000)
+
+        # If last epoch, save the training history graph
+        if idx + 1 == data.HP_iteration:
+            plot_training_history(history, experiment_dir_name)
 
         dev_finish = time.time()
         dev_cost = dev_finish - epoch_finish
@@ -516,25 +543,26 @@ def train(data):
                 print("Exceed previous best f score:", best_dev)
             else:
                 print("Exceed previous best acc score:", best_dev)
-            model_name = data.model_dir +'.'+ str(idx) + ".model"
+            model_name = experiment_dir_name + 'ner_clf.' + str(idx) + ".model"
             print("Save current best model in file:", model_name)
             torch.save(model.state_dict(), model_name)
             best_dev = current_score
         # ## decode test
-        if idx + 1 == data.HP_iteration:
-            speed, acc, p, r, f, _,_ = evaluate(data, model, "test", last_epoch=True)
-        else:
-            speed, acc, p, r, f, _, _ = evaluate(data, model, "test")
 
-        test_finish = time.time()
-        test_cost = test_finish - dev_finish
-        if data.seg:
-            print("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f"%(test_cost, speed, acc, p, r, f))
-        else:
-            print("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f"%(test_cost, speed, acc))
+        # # If last epoch
+        # if idx + 1 == data.HP_iteration:
+        #     speed, acc, p, r, f, _,_ = evaluate(data, model, "test", last_epoch=True)
+        # else:
+        #     speed, acc, p, r, f, _, _ = evaluate(data, model, "test")
+        #
+        # test_finish = time.time()
+        # test_cost = test_finish - dev_finish
+        # if data.seg:
+        #     print("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f"%(test_cost, speed, acc, p, r, f))
+        # else:
+        #     print("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f"%(test_cost, speed, acc))
         gc.collect()
 
-    plot_training_history(history)
 
 
 def load_model_decode(data, name):
@@ -584,7 +612,7 @@ if __name__ == '__main__':
         data.generate_instance('dev')
         data.generate_instance('test')
         data.build_pretrain_emb()
-        train(data)
+        train(data, args.config)
     elif status == 'decode':
         print("MODEL: decode")
         data.load(data.dset_dir)

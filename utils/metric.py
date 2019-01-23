@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, classification_report
 
 from time import gmtime, strftime
 
@@ -22,7 +22,7 @@ import numpy as np
 
 
 ## input as sentence level labels
-def get_ner_fmeasure(name, golden_lists, predict_lists, label_type="BMES", save_confusion_matrix=False):
+def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, label_type="BMES", save_confusion_matrix=False):
     sent_num = len(golden_lists)
     golden_full = []
     predict_full = []
@@ -74,15 +74,24 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, label_type="BMES", save_
 
         cm = confusion_matrix(golden_list_all, predict_list_all, labels=classes)
 
-        time_stamp = strftime("%H:%M:%S", gmtime())
+        clf_report = classification_report(golden_list_all, predict_list_all, labels=classes)
 
-        cm_path = 'confusion_matrices/confusion_matrix_' + name + '_' + str(time_stamp)
+        print(clf_report)
 
-        with open(cm_path + '.tsv', 'w') as f:
+        cm_path = experiment_dir_name + '/confusion_matrix_' + name
+
+        with open(cm_path + '.tsv', 'w') as f1:
             for row in cm:
                 for element in row:
-                    f.write(str(element) + '\t')
-                f.write('\n')
+                    f1.write(str(element) + '\t')
+                f1.write('\n')
+
+        clf_report_path = experiment_dir_name + '/clf_report' + name
+
+        with open(clf_report_path + '.txt', 'w') as f2:
+            for row in clf_report.split('\n'):
+                f2.write(row + '\n')
+
 
         fig, ax = plt.subplots()
         im = ax.imshow(cm)
