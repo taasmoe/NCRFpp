@@ -2,43 +2,110 @@
 # @Author: Jie
 # @Date:   2017-02-16 09:53:19
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
-# @Last Modified time: 2019-01-18 21:04:10
+# @Last Modified time: 2017-12-19 15:23:12
 
 # from operator import add
 #
 from __future__ import print_function
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
+from sklearn.metrics import confusion_matrix
+
+from time import gmtime, strftime
+
 import sys
 
+import numpy as np
 
 
 ## input as sentence level labels
-def get_ner_fmeasure(golden_lists, predict_lists, label_type="BMES"):
+def get_ner_fmeasure(name, golden_lists, predict_lists, label_type="BMES", save_confusion_matrix=False):
     sent_num = len(golden_lists)
     golden_full = []
     predict_full = []
     right_full = []
     right_tag = 0
     all_tag = 0
+    golden_list_all = []
+    predict_list_all = []
+
     for idx in range(0,sent_num):
         # word_list = sentence_lists[idx]
         golden_list = golden_lists[idx]
         predict_list = predict_lists[idx]
+
+        for g in golden_list:
+            golden_list_all.append(g)
+
+        for p in predict_list:
+            predict_list_all.append(p)
+
         for idy in range(len(golden_list)):
             if golden_list[idy] == predict_list[idy]:
                 right_tag += 1
         all_tag += len(golden_list)
-        if label_type == "BMES" or "BIOES":
+        if label_type == "BMES":
             gold_matrix = get_ner_BMES(golden_list)
             pred_matrix = get_ner_BMES(predict_list)
         else:
             gold_matrix = get_ner_BIO(golden_list)
             pred_matrix = get_ner_BIO(predict_list)
+
         # print "gold", gold_matrix
         # print "pred", pred_matrix
         right_ner = list(set(gold_matrix).intersection(set(pred_matrix)))
         golden_full += gold_matrix
         predict_full += pred_matrix
         right_full += right_ner
+
+    if save_confusion_matrix:
+        classes = ['O',
+                   'B-PER', 'I-PER',
+                   'B-ORG', 'I-ORG',
+                   'B-GPE_ORG', 'I-GPE_ORG',
+                   'B-LOC', 'I-LOC',
+                   'B-GPE_LOC', 'I-GPE_LOC',
+                   'B-DRV', 'I-DRV',
+                   'B-EVT', 'I-EVT',
+                   'B-PROD', 'I-PROD']
+
+        cm = confusion_matrix(golden_list_all, predict_list_all, labels=classes)
+
+        time_stamp = strftime("%H:%M:%S", gmtime())
+
+        cm_path = 'confusion_matrices/confusion_matrix_' + name + '_' + str(time_stamp)
+
+        with open(cm_path + '.tsv', 'w') as f:
+            for row in cm:
+                for element in row:
+                    f.write(str(element) + '\t')
+                f.write('\n')
+
+        fig, ax = plt.subplots()
+        im = ax.imshow(cm)
+
+        # We want to show all ticks...
+        ax.set_xticks(np.arange(len(classes)))
+        ax.set_yticks(np.arange(len(classes)))
+        # ... and label them with the respective list entries
+        ax.set_xticklabels(classes)
+        ax.set_yticklabels(classes)
+
+        # Rotate the tick labels and set their alignment.
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+                 rotation_mode="anchor")
+
+        # Loop over data dimensions and create text annotations.
+        for i in range(len(classes)):
+            for j in range(len(classes)):
+                text = ax.text(j, i, cm[i, j], ha="center", va="center", color="w", fontsize=8)
+
+        plt.savefig(cm_path + '.png')
+        print('\nSaved confusion matrix', cm_path)
+
     right_num = len(right_full)
     golden_num = len(golden_full)
     predict_num = len(predict_full)
@@ -56,10 +123,7 @@ def get_ner_fmeasure(golden_lists, predict_lists, label_type="BMES"):
         f_measure = 2*precision*recall/(precision+recall)
     accuracy = (right_tag+0.0)/all_tag
     # print "Accuracy: ", right_tag,"/",all_tag,"=",accuracy
-    if  label_type.upper().startswith("B-"):
-        print("gold_num = ", golden_num, " pred_num = ", predict_num, " right_num = ", right_num)
-    else:
-        print("Right token = ", right_tag, " All token = ", all_tag, " acc = ", accuracy)
+    print("gold_num = ", golden_num, " pred_num = ", predict_num, " right_num = ", right_num)
     return accuracy, precision, recall, f_measure
 
 

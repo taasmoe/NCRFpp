@@ -2,9 +2,13 @@
 # @Author: Jie
 # @Date:   2017-06-15 14:11:08
 # @Last Modified by:   Jie Yang,     Contact: jieynlp@gmail.com
-# @Last Modified time: 2019-01-14 16:09:16
-
+# @Last Modified time: 2019-01-01 23:58:38
 from __future__ import print_function
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+
 import time
 import sys
 import argparse
@@ -121,6 +125,32 @@ def recover_nbest_label(pred_variable, mask_variable, label_alphabet, word_recov
     return pred_label
 
 
+
+# def save_data_setting(data, save_file):
+#     new_data = copy.deepcopy(data)
+#     ## remove input instances
+#     new_data.train_texts = []
+#     new_data.dev_texts = []
+#     new_data.test_texts = []
+#     new_data.raw_texts = []
+
+#     new_data.train_Ids = []
+#     new_data.dev_Ids = []
+#     new_data.test_Ids = []
+#     new_data.raw_Ids = []
+#     ## save data settings
+#     with open(save_file, 'w') as fp:
+#         pickle.dump(new_data, fp)
+#     print("Data setting saved to file:",save_file)
+
+
+# def load_data_setting(save_file):
+#     with open(save_file, 'r') as fp:
+#         data = pickle.load(fp)
+#     print("Data setting loaded from file: ", save_file)
+#     data.show_data_summary()
+#     return data
+
 def lr_decay(optimizer, epoch, decay_rate, init_lr):
     lr = init_lr/(1+decay_rate*epoch)
     print(" Learning rate is set as:", lr)
@@ -130,7 +160,7 @@ def lr_decay(optimizer, epoch, decay_rate, init_lr):
 
 
 
-def evaluate(data, model, name, nbest=None):
+def evaluate(data, model, name, last_epoch=False, nbest=None):
     if name == "train":
         instances = data.train_Ids
     elif name == "dev":
@@ -163,7 +193,7 @@ def evaluate(data, model, name, nbest=None):
         if not instance:
             continue
         batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, False, data.sentence_classification)
-        if nbest and not data.sentence_classification:
+        if nbest:
             scores, nbest_tag_seq = model.decode_nbest(batch_word,batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask, nbest)
             nbest_pred_result = recover_nbest_label(nbest_tag_seq, mask, data.label_alphabet, batch_wordrecover)
             nbest_pred_results += nbest_pred_result
@@ -178,8 +208,13 @@ def evaluate(data, model, name, nbest=None):
         gold_results += gold_label
     decode_time = time.time() - start_time
     speed = len(instances)/decode_time
-    acc, p, r, f = get_ner_fmeasure(gold_results, pred_results, data.tagScheme)
-    if nbest and not data.sentence_classification:
+
+    if last_epoch:
+        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, data.tagScheme, save_confusion_matrix=True)
+    else:
+        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, data.tagScheme)
+
+    if nbest:
         return speed, acc, p, r, f, nbest_pred_results, pred_scores
     return speed, acc, p, r, f, pred_results, pred_scores
 
@@ -348,11 +383,21 @@ def batchify_sentence_classification_with_label(input_batch_list, gpu, if_train=
     return word_seq_tensor,feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
 
 
+def plot_training_history(history: dict):
+    for metric in history.keys():
+        plt.plot(history[metric])
+
+    plt.savefig('training_history.png')
+
+
+def confusion_matrix():
+    pass
 
 
 def train(data):
     print("Training model...")
     data.show_data_summary()
+    print('tag scheme', data.tagScheme)
     save_data_name = data.model_dir +".dset"
     data.save(save_data_name)
     if data.sentence_classification:
@@ -376,10 +421,18 @@ def train(data):
     best_dev = -10
     # data.HP_iteration = 1
     ## start training
+
+    history = {'accuracy': [],
+               'precision': [],
+               'recall': [],
+               'f1': []}
+
+    print(data.HP_iteration)
+
     for idx in range(data.HP_iteration):
         epoch_start = time.time()
         temp_start = epoch_start
-        print("Epoch: %s/%s" %(idx,data.HP_iteration))
+        print("Epoch: %s/%s" %(idx+1,data.HP_iteration))
         if data.optimizer == "SGD":
             optimizer = lr_decay(optimizer, idx, data.HP_lr_decay, data.HP_lr)
         instance_count = 0
@@ -389,7 +442,6 @@ def train(data):
         right_token = 0
         whole_token = 0
         random.shuffle(data.train_Ids)
-        print("Shuffle: first input word list:", data.train_Ids[0][0])
         ## set model in train model
         model.train()
         model.zero_grad()
@@ -407,7 +459,7 @@ def train(data):
                 continue
             batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, True, data.sentence_classification)
             instance_count += 1
-            loss, tag_seq = model.neg_log_likelihood_loss(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, mask)
+            loss, tag_seq = model.neg_log_likelihood_loss(batch_word,batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, mask)
             right, whole = predict_check(tag_seq, batch_label, mask, data.sentence_classification)
             right_token += right
             whole_token += whole
@@ -433,13 +485,22 @@ def train(data):
 
         epoch_finish = time.time()
         epoch_cost = epoch_finish - epoch_start
-        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s"%(idx, epoch_cost, train_num/epoch_cost, total_loss))
+        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s"%(idx+1, epoch_cost, train_num/epoch_cost, total_loss))
         print("totalloss:", total_loss)
         if total_loss > 1e8 or str(total_loss) == "nan":
             print("ERROR: LOSS EXPLOSION (>1e8) ! PLEASE SET PROPER PARAMETERS AND STRUCTURE! EXIT....")
             exit(1)
         # continue
-        speed, acc, p, r, f, _,_ = evaluate(data, model, "dev")
+        if idx + 1 == data.HP_iteration:
+            speed, acc, p, r, f, _,_ = evaluate(data, model, "dev", last_epoch=True)
+        else:
+            speed, acc, p, r, f, _, _ = evaluate(data, model, "dev")
+
+        history['accuracy'].append(acc)
+        history['precision'].append(p)
+        history['recall'].append(r)
+        history['f1'].append(f)
+
         dev_finish = time.time()
         dev_cost = dev_finish - epoch_finish
 
@@ -460,7 +521,11 @@ def train(data):
             torch.save(model.state_dict(), model_name)
             best_dev = current_score
         # ## decode test
-        speed, acc, p, r, f, _,_ = evaluate(data, model, "test")
+        if idx + 1 == data.HP_iteration:
+            speed, acc, p, r, f, _,_ = evaluate(data, model, "test", last_epoch=True)
+        else:
+            speed, acc, p, r, f, _, _ = evaluate(data, model, "test")
+
         test_finish = time.time()
         test_cost = test_finish - dev_finish
         if data.seg:
@@ -469,14 +534,12 @@ def train(data):
             print("Test: time: %.2fs, speed: %.2fst/s; acc: %.4f"%(test_cost, speed, acc))
         gc.collect()
 
+    plot_training_history(history)
+
 
 def load_model_decode(data, name):
     print("Load Model from file: ", data.model_dir)
-    if data.sentence_classification:
-        model = SentClassifier(data)
-    else:
-        model = SeqLabel(data)
-    # model = SeqModel(data)
+    model = SeqModel(data)
     ## load model need consider if the model trained in GPU and load in CPU, or vice versa
     # if not gpu:
     #     model.load_state_dict(torch.load(model_dir))
@@ -532,7 +595,7 @@ if __name__ == '__main__':
         data.generate_instance('raw')
         print("nbest: %s"%(data.nbest))
         decode_results, pred_scores = load_model_decode(data, 'raw')
-        if data.nbest and not data.sentence_classification:
+        if data.nbest:
             data.write_nbest_decoded_results(decode_results, pred_scores, 'raw')
         else:
             data.write_decoded_results(decode_results, 'raw')
