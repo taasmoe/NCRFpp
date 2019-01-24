@@ -402,7 +402,7 @@ def train(data, config_file):
     data.show_data_summary()
     print('tag scheme', data.tagScheme)
 
-    time_stamp = strftime("%H:%M:%S", gmtime())
+    time_stamp = strftime("%Y-%m-%d_%H:%M:%S", gmtime())
 
     # Create a directory to store experiment results:
     experiment_dir_name = 'experiments_results/experiment_' + str(time_stamp) + '/'

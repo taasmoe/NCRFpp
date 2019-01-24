@@ -74,7 +74,9 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
 
         cm = confusion_matrix(golden_list_all, predict_list_all, labels=classes)
 
-        clf_report = classification_report(golden_list_all, predict_list_all, labels=classes, sample_weight='average')
+        cm[0, 0] = cm[0, 0] / 100
+
+        clf_report = classification_report(golden_list_all, predict_list_all, labels=classes)
 
         macro_scores = precision_recall_fscore_support(golden_list_all, predict_list_all, labels=classes, average='macro')
 
@@ -98,12 +100,12 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
                 f2.write(row + '\n')
 
             f2.write('Macro\n')
-            f2.write('Precision\tRecall\tF1\tSupport')
+            f2.write('Precision\tRecall\tF1\tSupport\n')
             f2.write('\t'.join([str(value) for value in macro_scores]))
 
-
         fig, ax = plt.subplots()
-        im = ax.imshow(cm)
+        im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+
 
         # We want to show all ticks...
         ax.set_xticks(np.arange(len(classes)))
@@ -113,13 +115,21 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
         ax.set_yticklabels(classes)
 
         # Rotate the tick labels and set their alignment.
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
-                 rotation_mode="anchor")
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+        threshold = cm.max() / 2
 
         # Loop over data dimensions and create text annotations.
         for i in range(len(classes)):
             for j in range(len(classes)):
-                text = ax.text(j, i, cm[i, j], ha="center", va="center", color="w", fontsize=8)
+                if i == j:
+                    text = ax.text(j, i, cm[i, j], ha="center", va="center",
+                                   fontstyle='oblique',
+                                   color="white" if cm[i, j] > threshold else "black", fontsize=8)
+
+                else:
+                    text = ax.text(j, i, cm[i, j], ha="center", va="center",
+                                   color="white" if cm[i, j] > threshold else "black", fontsize=8)
 
         plt.savefig(cm_path + '.png')
         print('\nSaved confusion matrix', cm_path)
