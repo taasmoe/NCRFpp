@@ -12,7 +12,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import confusion_matrix, classification_report, precision_recall_fscore_support
 
 from time import gmtime, strftime
 
@@ -74,9 +74,14 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
 
         cm = confusion_matrix(golden_list_all, predict_list_all, labels=classes)
 
-        clf_report = classification_report(golden_list_all, predict_list_all, labels=classes)
+        clf_report = classification_report(golden_list_all, predict_list_all, labels=classes, sample_weight='average')
+
+        macro_scores = precision_recall_fscore_support(golden_list_all, predict_list_all, labels=classes, average='macro')
 
         print(clf_report)
+
+        print('\nMacro scores')
+        print(macro_scores)
 
         cm_path = experiment_dir_name + '/confusion_matrix_' + name
 
@@ -91,6 +96,10 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
         with open(clf_report_path + '.txt', 'w') as f2:
             for row in clf_report.split('\n'):
                 f2.write(row + '\n')
+
+            f2.write('Macro\n')
+            f2.write('Precision\tRecall\tF1\tSupport')
+            f2.write('\t'.join([str(value) for value in macro_scores]))
 
 
         fig, ax = plt.subplots()
