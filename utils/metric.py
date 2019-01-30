@@ -62,17 +62,43 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
         right_full += right_ner
 
     if save_confusion_matrix:
-        classes = ['O',
-                   'B-PER', 'I-PER',
-                   'B-ORG', 'I-ORG',
-                   'B-GPE_ORG', 'I-GPE_ORG',
-                   'B-LOC', 'I-LOC',
-                   'B-GPE_LOC', 'I-GPE_LOC',
-                   'B-DRV', 'I-DRV',
-                   'B-EVT', 'I-EVT',
-                   'B-PROD', 'I-PROD']
+
+        # TODO: Class list should be inferred from the chosen dataset
+        num_classes = len(set(golden_list_all))
+
+        if num_classes == 15:
+            classes = ['O',
+                       'B-PER', 'I-PER',
+                       'B-ORG', 'I-ORG',
+                       'B-GPE', 'I-GPE',
+                       'B-LOC', 'I-LOC',
+                       'B-DRV', 'I-DRV',
+                       'B-EVT', 'I-EVT',
+                       'B-PROD', 'I-PROD']
+
+        elif num_classes == 13:
+            classes = ['O',
+                       'B-PER', 'I-PER',
+                       'B-ORG', 'I-ORG',
+                       'B-LOC', 'I-LOC',
+                       'B-DRV', 'I-DRV',
+                       'B-EVT', 'I-EVT',
+                       'B-PROD', 'I-PROD']
+
+        else:
+            classes = ['O',
+                       'B-PER', 'I-PER',
+                       'B-ORG', 'I-ORG',
+                       'B-GPE_ORG', 'I-GPE_ORG',
+                       'B-LOC', 'I-LOC',
+                       'B-GPE_LOC', 'I-GPE_LOC',
+                       'B-DRV', 'I-DRV',
+                       'B-EVT', 'I-EVT',
+                       'B-PROD', 'I-PROD']
 
         cm = confusion_matrix(golden_list_all, predict_list_all, labels=classes)
+
+        print(cm)
 
         cm[0, 0] = cm[0, 0] / 100
 
