@@ -22,7 +22,7 @@ import numpy as np
 
 
 ## input as sentence level labels
-def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, label_type="BMES", save_confusion_matrix=False):
+def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epoch, label_type="BMES", save_confusion_matrix=False):
     sent_num = len(golden_lists)
     golden_full = []
     predict_full = []
@@ -62,6 +62,7 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
         right_full += right_ner
 
     if save_confusion_matrix:
+        print('\nToken-level evaluation of the best performing model, at epoch', epoch, '\n')
 
         # TODO: Class list should be inferred from the chosen dataset
         num_classes = len(set(golden_list_all))
@@ -129,6 +130,7 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, lab
             f2.write('Precision\tRecall\tF1\tSupport\n')
             f2.write('\t'.join([str(value) for value in macro_scores]))
 
+        plt.clf()
         fig, ax = plt.subplots()
         im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
 

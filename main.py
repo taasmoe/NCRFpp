@@ -164,7 +164,7 @@ def lr_decay(optimizer, epoch, decay_rate, init_lr):
 
 
 
-def evaluate(data, model, name, dir_name, last_epoch=False, nbest=None):
+def evaluate(data, model, name, dir_name, epoch, best_epoch=False, nbest=None):
     if name == "train":
         instances = data.train_Ids
     elif name == "dev":
@@ -213,10 +213,10 @@ def evaluate(data, model, name, dir_name, last_epoch=False, nbest=None):
     decode_time = time.time() - start_time
     speed = len(instances)/decode_time
 
-    if last_epoch:
-        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, dir_name, data.tagScheme, save_confusion_matrix=True)
+    if best_epoch:
+        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, dir_name, epoch, data.tagScheme, save_confusion_matrix=True)
     else:
-        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, data.tagScheme)
+        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, epoch, data.tagScheme)
 
     if nbest:
         return speed, acc, p, r, f, nbest_pred_results, pred_scores
@@ -512,11 +512,7 @@ def train(data, config_file):
             exit(1)
         # continue
 
-        # If last epoch
-        if idx + 1 == data.HP_iteration:
-            speed, acc, p, r, f, _,_ = evaluate(data, model, "dev", experiment_dir_name, last_epoch=True)
-        else:
-            speed, acc, p, r, f, _, _ = evaluate(data, model, "dev", experiment_dir_name,)
+        speed, acc, p, r, f, _, _ = evaluate(data, model, "dev", experiment_dir_name, epoch=idx + 1)
 
         history['accuracy'].append(acc)
         history['precision'].append(p)
@@ -543,7 +539,12 @@ def train(data, config_file):
                 print("Exceed previous best f score:", best_dev)
             else:
                 print("Exceed previous best acc score:", best_dev)
-            model_name = experiment_dir_name + 'ner_clf.' + str(idx) + ".model"
+
+            # Store classifcation report and confusion matrix for this model. These will be overwritten as the model
+            # performance increases
+            evaluate(data, model, "dev", experiment_dir_name, epoch=idx + 1, best_epoch=True)
+
+            model_name = experiment_dir_name + 'ner_clf.' + str(idx + 1) + ".model"
             print("Save current best model in file:", model_name)
             torch.save(model.state_dict(), model_name)
             best_dev = current_score
