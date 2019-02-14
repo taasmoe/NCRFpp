@@ -6,6 +6,7 @@
 from __future__ import print_function
 
 import matplotlib
+
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
@@ -31,7 +32,6 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
-
 
 seed_num = 42
 random.seed(seed_num)
@@ -60,7 +60,7 @@ def predict_check(pred_variable, gold_variable, mask_variable, sentence_classifi
     overlaped = (pred == gold)
     if sentence_classification:
         right_token = np.sum(overlaped)
-        total_token = overlaped.shape[0] ## =batch_size
+        total_token = overlaped.shape[0]  ## =batch_size
     else:
         right_token = np.sum(overlaped * mask)
         total_token = mask.sum()
@@ -68,7 +68,8 @@ def predict_check(pred_variable, gold_variable, mask_variable, sentence_classifi
     return right_token, total_token
 
 
-def recover_label(pred_variable, gold_variable, mask_variable, label_alphabet, word_recover, sentence_classification=False):
+def recover_label(pred_variable, gold_variable, mask_variable, label_alphabet, word_recover,
+                  sentence_classification=False):
     """
         input:
             pred_variable (batch_size, sent_len): pred tag result
@@ -95,7 +96,7 @@ def recover_label(pred_variable, gold_variable, mask_variable, label_alphabet, w
         for idx in range(batch_size):
             pred = [label_alphabet.get_instance(pred_tag[idx][idy]) for idy in range(seq_len) if mask[idx][idy] != 0]
             gold = [label_alphabet.get_instance(gold_tag[idx][idy]) for idy in range(seq_len) if mask[idx][idy] != 0]
-            assert(len(pred)==len(gold))
+            assert (len(pred) == len(gold))
             pred_label.append(pred)
             gold_label.append(gold)
     return pred_label, gold_label
@@ -123,11 +124,11 @@ def recover_nbest_label(pred_variable, mask_variable, label_alphabet, word_recov
     for idx in range(batch_size):
         pred = []
         for idz in range(nbest):
-            each_pred = [label_alphabet.get_instance(pred_tag[idx][idy][idz]) for idy in range(seq_len) if mask[idx][idy] != 0]
+            each_pred = [label_alphabet.get_instance(pred_tag[idx][idy][idz]) for idy in range(seq_len) if
+                         mask[idx][idy] != 0]
             pred.append(each_pred)
         pred_label.append(pred)
     return pred_label
-
 
 
 # def save_data_setting(data, save_file):
@@ -156,12 +157,11 @@ def recover_nbest_label(pred_variable, mask_variable, label_alphabet, word_recov
 #     return data
 
 def lr_decay(optimizer, epoch, decay_rate, init_lr):
-    lr = init_lr/(1+decay_rate*epoch)
+    lr = init_lr / (1 + decay_rate * epoch)
     print(" Learning rate is set as:", lr)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return optimizer
-
 
 
 def evaluate(data, model, name, dir_name, epoch, best_epoch=False, nbest=None):
@@ -187,34 +187,39 @@ def evaluate(data, model, name, dir_name, epoch, best_epoch=False, nbest=None):
     batch_size = data.HP_batch_size
     start_time = time.time()
     train_num = len(instances)
-    total_batch = train_num//batch_size+1
+    total_batch = train_num // batch_size + 1
     for batch_id in range(total_batch):
-        start = batch_id*batch_size
-        end = (batch_id+1)*batch_size
+        start = batch_id * batch_size
+        end = (batch_id + 1) * batch_size
         if end > train_num:
-            end =  train_num
+            end = train_num
         instance = instances[start:end]
         if not instance:
             continue
-        batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, False, data.sentence_classification)
+        batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask = batchify_with_label(
+            instance, data.HP_gpu, False, data.sentence_classification)
         if nbest:
-            scores, nbest_tag_seq = model.decode_nbest(batch_word,batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask, nbest)
+            scores, nbest_tag_seq = model.decode_nbest(batch_word, batch_features, batch_wordlen, batch_char,
+                                                       batch_charlen, batch_charrecover, mask, nbest)
             nbest_pred_result = recover_nbest_label(nbest_tag_seq, mask, data.label_alphabet, batch_wordrecover)
             nbest_pred_results += nbest_pred_result
             pred_scores += scores[batch_wordrecover].cpu().data.numpy().tolist()
             ## select the best sequence to evalurate
-            tag_seq = nbest_tag_seq[:,:,0]
+            tag_seq = nbest_tag_seq[:, :, 0]
         else:
-            tag_seq = model(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, mask)
+            tag_seq = model(batch_word, batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover,
+                            mask)
         # print("tag:",tag_seq)
-        pred_label, gold_label = recover_label(tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover, data.sentence_classification)
+        pred_label, gold_label = recover_label(tag_seq, batch_label, mask, data.label_alphabet, batch_wordrecover,
+                                               data.sentence_classification)
         pred_results += pred_label
         gold_results += gold_label
     decode_time = time.time() - start_time
-    speed = len(instances)/decode_time
+    speed = len(instances) / decode_time
 
     if best_epoch:
-        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, dir_name, epoch, data.tagScheme, save_confusion_matrix=True)
+        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, dir_name, epoch, data.tagScheme,
+                                        save_confusion_matrix=True)
     else:
         acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, epoch, data.tagScheme)
 
@@ -257,19 +262,19 @@ def batchify_sequence_labeling_with_label(input_batch_list, gpu, if_train=True):
     labels = [sent[3] for sent in input_batch_list]
     word_seq_lengths = torch.LongTensor(list(map(len, words)))
     max_seq_len = word_seq_lengths.max().item()
-    word_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).long()
-    label_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).long()
+    word_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad=if_train).long()
+    label_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad=if_train).long()
     feature_seq_tensors = []
     for idx in range(feature_num):
-        feature_seq_tensors.append(torch.zeros((batch_size, max_seq_len),requires_grad =  if_train).long())
-    mask = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).byte()
+        feature_seq_tensors.append(torch.zeros((batch_size, max_seq_len), requires_grad=if_train).long())
+    mask = torch.zeros((batch_size, max_seq_len), requires_grad=if_train).byte()
     for idx, (seq, label, seqlen) in enumerate(zip(words, labels, word_seq_lengths)):
         seqlen = seqlen.item()
         word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
         label_seq_tensor[idx, :seqlen] = torch.LongTensor(label)
-        mask[idx, :seqlen] = torch.Tensor([1]*seqlen)
+        mask[idx, :seqlen] = torch.Tensor([1] * seqlen)
         for idy in range(feature_num):
-            feature_seq_tensors[idy][idx,:seqlen] = torch.LongTensor(features[idx][:,idy])
+            feature_seq_tensors[idy][idx, :seqlen] = torch.LongTensor(features[idx][:, idy])
     word_seq_lengths, word_perm_idx = word_seq_lengths.sort(0, descending=True)
     word_seq_tensor = word_seq_tensor[word_perm_idx]
     for idx in range(feature_num):
@@ -279,18 +284,18 @@ def batchify_sequence_labeling_with_label(input_batch_list, gpu, if_train=True):
     mask = mask[word_perm_idx]
     ### deal with char
     # pad_chars (batch_size, max_seq_len)
-    pad_chars = [chars[idx] + [[0]] * (max_seq_len-len(chars[idx])) for idx in range(len(chars))]
+    pad_chars = [chars[idx] + [[0]] * (max_seq_len - len(chars[idx])) for idx in range(len(chars))]
     length_list = [list(map(len, pad_char)) for pad_char in pad_chars]
     max_word_len = max(map(max, length_list))
-    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len), requires_grad =  if_train).long()
+    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len), requires_grad=if_train).long()
     char_seq_lengths = torch.LongTensor(length_list)
     for idx, (seq, seqlen) in enumerate(zip(pad_chars, char_seq_lengths)):
         for idy, (word, wordlen) in enumerate(zip(seq, seqlen)):
             # print len(word), wordlen
             char_seq_tensor[idx, idy, :wordlen] = torch.LongTensor(word)
 
-    char_seq_tensor = char_seq_tensor[word_perm_idx].view(batch_size*max_seq_len,-1)
-    char_seq_lengths = char_seq_lengths[word_perm_idx].view(batch_size*max_seq_len,)
+    char_seq_tensor = char_seq_tensor[word_perm_idx].view(batch_size * max_seq_len, -1)
+    char_seq_lengths = char_seq_lengths[word_perm_idx].view(batch_size * max_seq_len, )
     char_seq_lengths, char_perm_idx = char_seq_lengths.sort(0, descending=True)
     char_seq_tensor = char_seq_tensor[char_perm_idx]
     _, char_seq_recover = char_perm_idx.sort(0, descending=False)
@@ -305,7 +310,7 @@ def batchify_sequence_labeling_with_label(input_batch_list, gpu, if_train=True):
         char_seq_tensor = char_seq_tensor.cuda()
         char_seq_recover = char_seq_recover.cuda()
         mask = mask.cuda()
-    return word_seq_tensor,feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
+    return word_seq_tensor, feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
 
 
 def batchify_sentence_classification_with_label(input_batch_list, gpu, if_train=True):
@@ -330,26 +335,26 @@ def batchify_sentence_classification_with_label(input_batch_list, gpu, if_train=
 
     batch_size = len(input_batch_list)
     words = [sent[0] for sent in input_batch_list]
-    features = [np.asarray(sent[1]) for sent in input_batch_list]    
+    features = [np.asarray(sent[1]) for sent in input_batch_list]
     feature_num = len(features[0])
     chars = [sent[2] for sent in input_batch_list]
     labels = [sent[3] for sent in input_batch_list]
     word_seq_lengths = torch.LongTensor(list(map(len, words)))
     max_seq_len = word_seq_lengths.max().item()
-    word_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).long()
-    label_seq_tensor = torch.zeros((batch_size, ), requires_grad =  if_train).long()
+    word_seq_tensor = torch.zeros((batch_size, max_seq_len), requires_grad=if_train).long()
+    label_seq_tensor = torch.zeros((batch_size,), requires_grad=if_train).long()
     feature_seq_tensors = []
     for idx in range(feature_num):
-        feature_seq_tensors.append(torch.zeros((batch_size, max_seq_len),requires_grad =  if_train).long())
-    mask = torch.zeros((batch_size, max_seq_len), requires_grad =  if_train).byte()
+        feature_seq_tensors.append(torch.zeros((batch_size, max_seq_len), requires_grad=if_train).long())
+    mask = torch.zeros((batch_size, max_seq_len), requires_grad=if_train).byte()
     label_seq_tensor = torch.LongTensor(labels)
     # exit(0)
-    for idx, (seq,  seqlen) in enumerate(zip(words,  word_seq_lengths)):
+    for idx, (seq, seqlen) in enumerate(zip(words, word_seq_lengths)):
         seqlen = seqlen.item()
         word_seq_tensor[idx, :seqlen] = torch.LongTensor(seq)
-        mask[idx, :seqlen] = torch.Tensor([1]*seqlen)
+        mask[idx, :seqlen] = torch.Tensor([1] * seqlen)
         for idy in range(feature_num):
-            feature_seq_tensors[idy][idx,:seqlen] = torch.LongTensor(features[idx][:,idy])
+            feature_seq_tensors[idy][idx, :seqlen] = torch.LongTensor(features[idx][:, idy])
     word_seq_lengths, word_perm_idx = word_seq_lengths.sort(0, descending=True)
     word_seq_tensor = word_seq_tensor[word_perm_idx]
     for idx in range(feature_num):
@@ -358,18 +363,18 @@ def batchify_sentence_classification_with_label(input_batch_list, gpu, if_train=
     mask = mask[word_perm_idx]
     ### deal with char
     # pad_chars (batch_size, max_seq_len)
-    pad_chars = [chars[idx] + [[0]] * (max_seq_len-len(chars[idx])) for idx in range(len(chars))]
+    pad_chars = [chars[idx] + [[0]] * (max_seq_len - len(chars[idx])) for idx in range(len(chars))]
     length_list = [list(map(len, pad_char)) for pad_char in pad_chars]
     max_word_len = max(map(max, length_list))
-    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len), requires_grad =  if_train).long()
+    char_seq_tensor = torch.zeros((batch_size, max_seq_len, max_word_len), requires_grad=if_train).long()
     char_seq_lengths = torch.LongTensor(length_list)
     for idx, (seq, seqlen) in enumerate(zip(pad_chars, char_seq_lengths)):
         for idy, (word, wordlen) in enumerate(zip(seq, seqlen)):
             # print len(word), wordlen
             char_seq_tensor[idx, idy, :wordlen] = torch.LongTensor(word)
 
-    char_seq_tensor = char_seq_tensor[word_perm_idx].view(batch_size*max_seq_len,-1)
-    char_seq_lengths = char_seq_lengths[word_perm_idx].view(batch_size*max_seq_len,)
+    char_seq_tensor = char_seq_tensor[word_perm_idx].view(batch_size * max_seq_len, -1)
+    char_seq_lengths = char_seq_lengths[word_perm_idx].view(batch_size * max_seq_len, )
     char_seq_lengths, char_perm_idx = char_seq_lengths.sort(0, descending=True)
     char_seq_tensor = char_seq_tensor[char_perm_idx]
     _, char_seq_recover = char_perm_idx.sort(0, descending=False)
@@ -384,7 +389,7 @@ def batchify_sentence_classification_with_label(input_batch_list, gpu, if_train=
         char_seq_tensor = char_seq_tensor.cuda()
         char_seq_recover = char_seq_recover.cuda()
         mask = mask.cuda()
-    return word_seq_tensor,feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
+    return word_seq_tensor, feature_seq_tensors, word_seq_lengths, word_seq_recover, char_seq_tensor, char_seq_lengths, char_seq_recover, label_seq_tensor, mask
 
 
 def plot_training_history(history: dict, dir_name):
@@ -417,7 +422,7 @@ def train(data, config_file):
 
     shutil.copy(config_file, experiment_dir_name)
 
-    save_data_name = data.model_dir +".dset"
+    save_data_name = data.model_dir + ".dset"
     data.save(save_data_name)
     if data.sentence_classification:
         model = SentClassifier(data)
@@ -425,7 +430,7 @@ def train(data, config_file):
         model = SeqLabel(data)
     # loss_function = nn.NLLLoss()
     if data.optimizer.lower() == "sgd":
-        optimizer = optim.SGD(model.parameters(), lr=data.HP_lr, momentum=data.HP_momentum,weight_decay=data.HP_l2)
+        optimizer = optim.SGD(model.parameters(), lr=data.HP_lr, momentum=data.HP_momentum, weight_decay=data.HP_l2)
     elif data.optimizer.lower() == "adagrad":
         optimizer = optim.Adagrad(model.parameters(), lr=data.HP_lr, weight_decay=data.HP_l2)
     elif data.optimizer.lower() == "adadelta":
@@ -435,7 +440,7 @@ def train(data, config_file):
     elif data.optimizer.lower() == "adam":
         optimizer = optim.Adam(model.parameters(), lr=data.HP_lr, weight_decay=data.HP_l2)
     else:
-        print("Optimizer illegal: %s"%(data.optimizer))
+        print("Optimizer illegal: %s" % (data.optimizer))
         exit(1)
     best_dev = -10
     # data.HP_iteration = 1
@@ -452,7 +457,7 @@ def train(data, config_file):
     for idx in range(data.HP_iteration):
         epoch_start = time.time()
         temp_start = epoch_start
-        print("Epoch: %s/%s" %(idx+1,data.HP_iteration))
+        print("Epoch: %s/%s" % (idx + 1, data.HP_iteration))
         if data.optimizer == "SGD":
             optimizer = lr_decay(optimizer, idx, data.HP_lr_decay, data.HP_lr)
         instance_count = 0
@@ -468,29 +473,32 @@ def train(data, config_file):
         batch_size = data.HP_batch_size
         batch_id = 0
         train_num = len(data.train_Ids)
-        total_batch = train_num//batch_size+1
+        total_batch = train_num // batch_size + 1
         for batch_id in range(total_batch):
-            start = batch_id*batch_size
-            end = (batch_id+1)*batch_size
-            if end >train_num:
+            start = batch_id * batch_size
+            end = (batch_id + 1) * batch_size
+            if end > train_num:
                 end = train_num
             instance = data.train_Ids[start:end]
             if not instance:
                 continue
-            batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask  = batchify_with_label(instance, data.HP_gpu, True, data.sentence_classification)
+            batch_word, batch_features, batch_wordlen, batch_wordrecover, batch_char, batch_charlen, batch_charrecover, batch_label, mask = batchify_with_label(
+                instance, data.HP_gpu, True, data.sentence_classification)
             instance_count += 1
-            loss, tag_seq = model.neg_log_likelihood_loss(batch_word,batch_features, batch_wordlen, batch_char, batch_charlen, batch_charrecover, batch_label, mask)
+            loss, tag_seq = model.neg_log_likelihood_loss(batch_word, batch_features, batch_wordlen, batch_char,
+                                                          batch_charlen, batch_charrecover, batch_label, mask)
             right, whole = predict_check(tag_seq, batch_label, mask, data.sentence_classification)
             right_token += right
             whole_token += whole
             # print("loss:",loss.item())
             sample_loss += loss.item()
             total_loss += loss.item()
-            if end%500 == 0:
+            if end % 500 == 0:
                 temp_time = time.time()
                 temp_cost = temp_time - temp_start
                 temp_start = temp_time
-                print("     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f"%(end, temp_cost, sample_loss, right_token, whole_token,(right_token+0.)/whole_token))
+                print("     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f" % (
+                end, temp_cost, sample_loss, right_token, whole_token, (right_token + 0.) / whole_token))
                 if sample_loss > 1e8 or str(sample_loss) == "nan":
                     print("ERROR: LOSS EXPLOSION (>1e8) ! PLEASE SET PROPER PARAMETERS AND STRUCTURE! EXIT....")
                     exit(1)
@@ -501,11 +509,13 @@ def train(data, config_file):
             model.zero_grad()
         temp_time = time.time()
         temp_cost = temp_time - temp_start
-        print("     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f"%(end, temp_cost, sample_loss, right_token, whole_token,(right_token+0.)/whole_token))
+        print("     Instance: %s; Time: %.2fs; loss: %.4f; acc: %s/%s=%.4f" % (
+        end, temp_cost, sample_loss, right_token, whole_token, (right_token + 0.) / whole_token))
 
         epoch_finish = time.time()
         epoch_cost = epoch_finish - epoch_start
-        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s"%(idx+1, epoch_cost, train_num/epoch_cost, total_loss))
+        print("Epoch: %s training finished. Time: %.2fs, speed: %.2fst/s,  total loss: %s" % (
+        idx + 1, epoch_cost, train_num / epoch_cost, total_loss))
         print("totalloss:", total_loss)
         if total_loss > 1e8 or str(total_loss) == "nan":
             print("ERROR: LOSS EXPLOSION (>1e8) ! PLEASE SET PROPER PARAMETERS AND STRUCTURE! EXIT....")
@@ -529,10 +539,11 @@ def train(data, config_file):
 
         if data.seg:
             current_score = f
-            print("Dev: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f"%(dev_cost, speed, acc, p, r, f))
+            print("Dev: time: %.2fs, speed: %.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f" % (
+            dev_cost, speed, acc, p, r, f))
         else:
             current_score = acc
-            print("Dev: time: %.2fs speed: %.2fst/s; acc: %.4f"%(dev_cost, speed, acc))
+            print("Dev: time: %.2fs speed: %.2fst/s; acc: %.4f" % (dev_cost, speed, acc))
 
         if current_score > best_dev:
             if data.seg:
@@ -565,7 +576,6 @@ def train(data, config_file):
         gc.collect()
 
 
-
 def load_model_decode(data, name):
     print("Load Model from file: ", data.model_dir)
     model = SeqModel(data)
@@ -579,24 +589,23 @@ def load_model_decode(data, name):
     #     # model = torch.load(model_dir)
     model.load_state_dict(torch.load(data.load_model_dir))
 
-    print("Decode %s data, nbest: %s ..."%(name, data.nbest))
+    print("Decode %s data, nbest: %s ..." % (name, data.nbest))
     start_time = time.time()
     speed, acc, p, r, f, pred_results, pred_scores = evaluate(data, model, name, data.nbest)
     end_time = time.time()
     time_cost = end_time - start_time
     if data.seg:
-        print("%s: time:%.2fs, speed:%.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f"%(name, time_cost, speed, acc, p, r, f))
+        print("%s: time:%.2fs, speed:%.2fst/s; acc: %.4f, p: %.4f, r: %.4f, f: %.4f" % (
+        name, time_cost, speed, acc, p, r, f))
     else:
-        print("%s: time:%.2fs, speed:%.2fst/s; acc: %.4f"%(name, time_cost, speed, acc))
+        print("%s: time:%.2fs, speed:%.2fst/s; acc: %.4f" % (name, time_cost, speed, acc))
     return pred_results, pred_scores
-
-
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Tuning with NCRF++')
     # parser.add_argument('--status', choices=['train', 'decode'], help='update algorithm', default='train')
-    parser.add_argument('--config',  help='Configuration File' )
+    parser.add_argument('--config', help='Configuration File')
 
     args = parser.parse_args()
     data = Data()
@@ -604,7 +613,7 @@ if __name__ == '__main__':
     data.read_config(args.config)
     data.show_data_summary()
     status = data.status.lower()
-    print("Seed num:",seed_num)
+    print("Seed num:", seed_num)
 
     if status == 'train':
         print("MODEL: train")
@@ -622,7 +631,7 @@ if __name__ == '__main__':
         # exit(0)
         data.show_data_summary()
         data.generate_instance('raw')
-        print("nbest: %s"%(data.nbest))
+        print("nbest: %s" % (data.nbest))
         decode_results, pred_scores = load_model_decode(data, 'raw')
         if data.nbest:
             data.write_nbest_decoded_results(decode_results, pred_scores, 'raw')
@@ -630,4 +639,3 @@ if __name__ == '__main__':
             data.write_decoded_results(decode_results, 'raw')
     else:
         print("Invalid argument! Please use valid arguments! (train/test/decode)")
-

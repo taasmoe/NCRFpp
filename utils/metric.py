@@ -14,7 +14,12 @@ import matplotlib.pyplot as plt
 
 from sklearn.metrics import confusion_matrix, classification_report, precision_recall_fscore_support
 
-from time import gmtime, strftime
+from copy import deepcopy
+from collections import namedtuple
+
+from pprint import pprint
+
+import pandas as pd
 
 import sys
 
@@ -64,12 +69,14 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epo
     if save_confusion_matrix:
         print('\nToken-level evaluation of the best performing model, at epoch', epoch, '\n')
 
-        # TODO: Class list should be inferred from the chosen dataset
+        # Collect full entities
+        y_gold = collect_named_entities(golden_list_all)
+        y_pred = collect_named_entities(predict_list_all)
+
         num_classes = len(set(golden_list_all))
 
         if num_classes == 15:
-            classes = ['O',
-                       'B-PER', 'I-PER',
+            encoded_classes = ['B-PER', 'I-PER',
                        'B-ORG', 'I-ORG',
                        'B-GPE', 'I-GPE',
                        'B-LOC', 'I-LOC',
@@ -77,18 +84,20 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epo
                        'B-EVT', 'I-EVT',
                        'B-PROD', 'I-PROD']
 
+            targets = ['PER', 'ORG', 'GPE', 'LOC', 'DRV', 'EVT', 'PROD']
+
         elif num_classes == 13:
-            classes = ['O',
-                       'B-PER', 'I-PER',
+            encoded_classes = ['B-PER', 'I-PER',
                        'B-ORG', 'I-ORG',
                        'B-LOC', 'I-LOC',
                        'B-DRV', 'I-DRV',
                        'B-EVT', 'I-EVT',
                        'B-PROD', 'I-PROD']
 
+            targets = ['PER', 'ORG', 'LOC', 'DRV', 'EVT', 'PROD']
+
         else:
-            classes = ['O',
-                       'B-PER', 'I-PER',
+            encoded_classes = ['B-PER', 'I-PER',
                        'B-ORG', 'I-ORG',
                        'B-GPE_ORG', 'I-GPE_ORG',
                        'B-LOC', 'I-LOC',
@@ -97,15 +106,37 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epo
                        'B-EVT', 'I-EVT',
                        'B-PROD', 'I-PROD']
 
-        cm = confusion_matrix(golden_list_all, predict_list_all, labels=classes)
+            targets = ['PER', 'ORG', 'GPE_ORG', 'LOC', 'GPE_LOC', 'DRV', 'EVT', 'PROD']
+
+        results = compute_metrics(y_gold, y_pred, targets)
+
+        print('Overall measures')
+        print(pd.DataFrame.from_dict(results[0]), end='\n\n')
+
+
+        for key, value in results[1:][0].items():
+            print(key)
+            print(pd.DataFrame.from_dict(value), end='\n\n')
+
+        print('Strict evaluation:')
+        strict_precision = results[0]['strict']['precision']
+        strict_recall = results[0]['strict']['recall']
+
+        strict_f1 = 2 * ((strict_precision * strict_recall) / (strict_precision + strict_recall))
+
+        print('Precision', strict_precision)
+        print('Recall', strict_recall)
+        print('F1', strict_f1)
+
+        cm = confusion_matrix(golden_list_all, predict_list_all, labels=encoded_classes)
 
         print(cm)
 
         cm[0, 0] = cm[0, 0] / 100
 
-        clf_report = classification_report(golden_list_all, predict_list_all, labels=classes)
+        clf_report = classification_report(golden_list_all, predict_list_all, labels=encoded_classes)
 
-        macro_scores = precision_recall_fscore_support(golden_list_all, predict_list_all, labels=classes, average='macro')
+        macro_scores = precision_recall_fscore_support(golden_list_all, predict_list_all, labels=encoded_classes, average='macro')
 
         print(clf_report)
 
@@ -136,11 +167,11 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epo
 
 
         # We want to show all ticks...
-        ax.set_xticks(np.arange(len(classes)))
-        ax.set_yticks(np.arange(len(classes)))
+        ax.set_xticks(np.arange(len(encoded_classes)))
+        ax.set_yticks(np.arange(len(encoded_classes)))
         # ... and label them with the respective list entries
-        ax.set_xticklabels(classes)
-        ax.set_yticklabels(classes)
+        ax.set_xticklabels(encoded_classes)
+        ax.set_yticklabels(encoded_classes)
 
         # Rotate the tick labels and set their alignment.
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
@@ -148,8 +179,8 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epo
         threshold = cm.max() / 2
 
         # Loop over data dimensions and create text annotations.
-        for i in range(len(classes)):
-            for j in range(len(classes)):
+        for i in range(len(encoded_classes)):
+            for j in range(len(encoded_classes)):
                 if i == j:
                     text = ax.text(j, i, cm[i, j], ha="center", va="center",
                                    fontstyle='oblique',
@@ -347,6 +378,200 @@ def fmeasure_from_singlefile(twolabel_file, label_type="BMES", pred_col=-1):
     P,R,F = get_ner_fmeasure(golden_labels, predict_labels, label_type)
     print ("P:%s, R:%s, F:%s"%(P,R,F))
 
+
+Entity = namedtuple("Entity", "e_type start_offset end_offset")
+
+
+def collect_named_entities(tokens):
+    """
+    Creates a list of Entity named-tuples, storing the entity type and the start and end
+    offsets of the entity.
+
+    :param tokens: a list of labels
+    :return: a list of Entity named-tuples
+    """
+
+    named_entities = []
+    start_offset = None
+    end_offset = None
+    ent_type = None
+
+    for offset, token_tag in enumerate(tokens):
+
+        if token_tag == 'O':
+            if ent_type is not None and start_offset is not None:
+                end_offset = offset - 1
+                named_entities.append(Entity(ent_type, start_offset, end_offset))
+                start_offset = None
+                end_offset = None
+                ent_type = None
+
+        elif ent_type is None:
+            ent_type = token_tag[2:]
+            start_offset = offset
+
+        elif ent_type != token_tag[2:] or (ent_type == token_tag[2:] and token_tag[:1] == 'B'):
+
+            end_offset = offset - 1
+            named_entities.append(Entity(ent_type, start_offset, end_offset))
+
+            # start of a new entity
+            ent_type = token_tag[2:]
+            start_offset = offset
+            end_offset = None
+
+    # catches an entity that goes up until the last token
+    if ent_type and start_offset and end_offset is None:
+        named_entities.append(Entity(ent_type, start_offset, len(tokens)-1))
+
+    return named_entities
+
+
+def compute_metrics(true_named_entities, pred_named_entities, targets):
+    eval_metrics = {'correct': 0, 'incorrect': 0, 'partial': 0, 'missed': 0, 'spurius': 0}
+    target_tags_no_schema = targets
+
+    # overall results
+    evaluation = {'strict': deepcopy(eval_metrics),
+                  'ent_type': deepcopy(eval_metrics),
+                  'partial': deepcopy(eval_metrics),
+                  'exact': deepcopy(eval_metrics)}
+
+    # results by entity type
+    evaluation_agg_entities_type = {e: deepcopy(evaluation) for e in target_tags_no_schema}
+
+    true_which_overlapped_with_pred = []  # keep track of entities that overlapped
+
+    # go through each predicted named-entity
+    for pred in pred_named_entities:
+        found_overlap = False
+
+        # check if there's an exact match, i.e.: boundary and entity type match
+        if pred in true_named_entities:
+            true_which_overlapped_with_pred.append(pred)
+            evaluation['strict']['correct'] += 1
+            evaluation['ent_type']['correct'] += 1
+            evaluation['exact']['correct'] += 1
+            evaluation['partial']['correct'] += 1
+
+            # for the agg. by e_type results
+            evaluation_agg_entities_type[pred.e_type]['strict']['correct'] += 1
+            evaluation_agg_entities_type[pred.e_type]['ent_type']['correct'] += 1
+
+        else:
+
+            # check for overlaps with any of the true entities
+            for true in true_named_entities:
+
+                # 1. check for an exact match but with a different e_type
+                if true.start_offset == pred.start_offset and pred.end_offset == true.end_offset \
+                        and true.e_type != pred.e_type:
+
+                    # overall results
+                    evaluation['strict']['incorrect'] += 1
+                    evaluation['ent_type']['incorrect'] += 1
+                    evaluation['partial']['correct'] += 1
+                    evaluation['exact']['correct'] += 1
+
+                    # aggregated by entity type results
+                    evaluation_agg_entities_type[pred.e_type]['strict']['incorrect'] += 1
+                    evaluation_agg_entities_type[pred.e_type]['ent_type']['incorrect'] += 1
+
+                    true_which_overlapped_with_pred.append(true)
+                    found_overlap = True
+                    break
+
+                # 2. check for an overlap i.e. not exact boundary match, with true entities
+                elif pred.start_offset <= true.end_offset and true.start_offset <= pred.end_offset:
+
+                    true_which_overlapped_with_pred.append(true)
+
+                    # 2.1 overlaps with the same entity type
+                    if pred.e_type == true.e_type:
+
+                        # overall results
+                        evaluation['strict']['incorrect'] += 1
+                        evaluation['ent_type']['correct'] += 1
+                        evaluation['partial']['partial'] += 1
+                        evaluation['exact']['incorrect'] += 1
+
+                        # aggregated by entity type results
+                        evaluation_agg_entities_type[pred.e_type]['strict']['incorrect'] += 1
+                        evaluation_agg_entities_type[pred.e_type]['ent_type']['correct'] += 1
+
+                        found_overlap = True
+                        break
+
+                    # 2.2 overlaps with a different entity type
+                    else:
+                        # overall results
+                        evaluation['strict']['incorrect'] += 1
+                        evaluation['ent_type']['incorrect'] += 1
+                        evaluation['partial']['partial'] += 1
+                        evaluation['exact']['incorrect'] += 1
+
+                        # aggregated by entity type results
+                        evaluation_agg_entities_type[true.e_type]['strict']['missed'] += 1
+                        evaluation_agg_entities_type[pred.e_type]['strict']['spurius'] += 1
+
+                        found_overlap = True
+                        break
+
+            # count spurius (i.e., over-generated) entities
+            if not found_overlap:
+                # overall results
+                evaluation['strict']['spurius'] += 1
+                evaluation['ent_type']['spurius'] += 1
+                evaluation['partial']['spurius'] += 1
+                evaluation['exact']['spurius'] += 1
+
+                # aggregated by entity type results
+                evaluation_agg_entities_type[pred.e_type]['strict']['spurius'] += 1
+                evaluation_agg_entities_type[pred.e_type]['ent_type']['spurius'] += 1
+
+    # count missed entities
+    for true in true_named_entities:
+        if true in true_which_overlapped_with_pred:
+            continue
+        else:
+            # overall results
+            evaluation['strict']['missed'] += 1
+            evaluation['ent_type']['missed'] += 1
+            evaluation['partial']['missed'] += 1
+            evaluation['exact']['missed'] += 1
+
+            # for the agg. by e_type
+            evaluation_agg_entities_type[true.e_type]['strict']['missed'] += 1
+            evaluation_agg_entities_type[true.e_type]['ent_type']['missed'] += 1
+
+    # Compute 'possible', 'actual', according to SemEval-2013 Task 9.1
+    for eval_type in ['strict', 'ent_type', 'partial', 'exact']:
+        correct = evaluation[eval_type]['correct']
+        incorrect = evaluation[eval_type]['incorrect']
+        partial = evaluation[eval_type]['partial']
+        missed = evaluation[eval_type]['missed']
+        spurius = evaluation[eval_type]['spurius']
+
+        # possible: nr. annotations in the gold-standard which contribute to the final score
+        evaluation[eval_type]['possible'] = correct + incorrect + partial + missed
+
+        # actual: number of annotations produced by the NER system
+        evaluation[eval_type]['actual'] = correct + incorrect + partial + spurius
+
+        actual = evaluation[eval_type]['actual']
+        possible = evaluation[eval_type]['possible']
+
+        if eval_type in ['partial', 'ent_type']:
+            precision = (correct + 0.5 * partial) / actual if actual > 0 else 0
+            recall = (correct + 0.5 * partial) / possible if possible > 0 else 0
+        else:
+            precision = correct / actual if actual > 0 else 0
+            recall = correct / possible if possible > 0 else 0
+
+        evaluation[eval_type]['precision'] = precision
+        evaluation[eval_type]['recall'] = recall
+
+    return evaluation, evaluation_agg_entities_type
 
 
 if __name__ == '__main__':
