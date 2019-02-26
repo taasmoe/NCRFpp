@@ -221,7 +221,7 @@ def evaluate(data, model, name, dir_name, epoch, best_epoch=False, nbest=None):
         acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, dir_name, epoch, data.tagScheme,
                                         save_confusion_matrix=True)
     else:
-        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, epoch, data.tagScheme)
+        acc, p, r, f = get_ner_fmeasure(name, gold_results, pred_results, dir_name, epoch, data.tagScheme)
 
     if nbest:
         return speed, acc, p, r, f, nbest_pred_results, pred_scores

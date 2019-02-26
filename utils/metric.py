@@ -20,6 +20,7 @@ from collections import namedtuple
 from pprint import pprint
 
 import pandas as pd
+import pickle
 
 import sys
 
@@ -37,7 +38,7 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epo
     golden_list_all = []
     predict_list_all = []
 
-    for idx in range(0,sent_num):
+    for idx in range(0, sent_num):
         # word_list = sentence_lists[idx]
         golden_list = golden_lists[idx]
         predict_list = predict_lists[idx]
@@ -66,132 +67,143 @@ def get_ner_fmeasure(name, golden_lists, predict_lists, experiment_dir_name, epo
         predict_full += pred_matrix
         right_full += right_ner
 
-    if save_confusion_matrix:
-        print('\nToken-level evaluation of the best performing model, at epoch', epoch, '\n')
+    print(experiment_dir_name)
+    print(type(experiment_dir_name))
 
-        # Collect full entities
-        y_gold = collect_named_entities(golden_list_all)
-        y_pred = collect_named_entities(predict_list_all)
+    predicted_pickle_name = experiment_dir_name + '/predicted_' + str(epoch) + '.pkl'
 
-        num_classes = len(set(golden_list_all))
+    with open(predicted_pickle_name, 'wb') as f1:
+        pickle.dump(predict_list_all, f1)
 
-        if num_classes == 15:
-            encoded_classes = ['B-PER', 'I-PER',
-                       'B-ORG', 'I-ORG',
-                       'B-GPE', 'I-GPE',
-                       'B-LOC', 'I-LOC',
-                       'B-DRV', 'I-DRV',
-                       'B-EVT', 'I-EVT',
-                       'B-PROD', 'I-PROD']
+    with open(experiment_dir_name + '/golden.pkl', 'wb') as f2:
+        pickle.dump(golden_list_all, f2)
 
-            targets = ['PER', 'ORG', 'GPE', 'LOC', 'DRV', 'EVT', 'PROD']
-
-        elif num_classes == 13:
-            encoded_classes = ['B-PER', 'I-PER',
-                       'B-ORG', 'I-ORG',
-                       'B-LOC', 'I-LOC',
-                       'B-DRV', 'I-DRV',
-                       'B-EVT', 'I-EVT',
-                       'B-PROD', 'I-PROD']
-
-            targets = ['PER', 'ORG', 'LOC', 'DRV', 'EVT', 'PROD']
-
-        else:
-            encoded_classes = ['B-PER', 'I-PER',
-                       'B-ORG', 'I-ORG',
-                       'B-GPE_ORG', 'I-GPE_ORG',
-                       'B-LOC', 'I-LOC',
-                       'B-GPE_LOC', 'I-GPE_LOC',
-                       'B-DRV', 'I-DRV',
-                       'B-EVT', 'I-EVT',
-                       'B-PROD', 'I-PROD']
-
-            targets = ['PER', 'ORG', 'GPE_ORG', 'LOC', 'GPE_LOC', 'DRV', 'EVT', 'PROD']
-
-        results = compute_metrics(y_gold, y_pred, targets)
-
-        print('Overall measures')
-        print(pd.DataFrame.from_dict(results[0]), end='\n\n')
-
-
-        for key, value in results[1:][0].items():
-            print(key)
-            print(pd.DataFrame.from_dict(value), end='\n\n')
-
-        print('Strict evaluation:')
-        strict_precision = results[0]['strict']['precision']
-        strict_recall = results[0]['strict']['recall']
-
-        strict_f1 = 2 * ((strict_precision * strict_recall) / (strict_precision + strict_recall))
-
-        print('Precision', strict_precision)
-        print('Recall', strict_recall)
-        print('F1', strict_f1)
-
-        cm = confusion_matrix(golden_list_all, predict_list_all, labels=encoded_classes)
-
-        print(cm)
-
-        cm[0, 0] = cm[0, 0] / 100
-
-        clf_report = classification_report(golden_list_all, predict_list_all, labels=encoded_classes)
-
-        macro_scores = precision_recall_fscore_support(golden_list_all, predict_list_all, labels=encoded_classes, average='macro')
-
-        print(clf_report)
-
-        print('\nMacro scores')
-        print(macro_scores)
-
-        cm_path = experiment_dir_name + '/confusion_matrix_' + name
-
-        with open(cm_path + '.tsv', 'w') as f1:
-            for row in cm:
-                for element in row:
-                    f1.write(str(element) + '\t')
-                f1.write('\n')
-
-        clf_report_path = experiment_dir_name + '/clf_report' + name
-
-        with open(clf_report_path + '.txt', 'w') as f2:
-            for row in clf_report.split('\n'):
-                f2.write(row + '\n')
-
-            f2.write('Macro\n')
-            f2.write('Precision\tRecall\tF1\tSupport\n')
-            f2.write('\t'.join([str(value) for value in macro_scores]))
-
-        plt.clf()
-        fig, ax = plt.subplots()
-        im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-
-
-        # We want to show all ticks...
-        ax.set_xticks(np.arange(len(encoded_classes)))
-        ax.set_yticks(np.arange(len(encoded_classes)))
-        # ... and label them with the respective list entries
-        ax.set_xticklabels(encoded_classes)
-        ax.set_yticklabels(encoded_classes)
-
-        # Rotate the tick labels and set their alignment.
-        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
-
-        threshold = cm.max() / 2
-
-        # Loop over data dimensions and create text annotations.
-        for i in range(len(encoded_classes)):
-            for j in range(len(encoded_classes)):
-                if i == j:
-                    text = ax.text(j, i, cm[i, j], ha="center", va="center",
-                                   fontstyle='oblique',
-                                   color="white" if cm[i, j] > threshold else "black", fontsize=8)
-
-                else:
-                    text = ax.text(j, i, cm[i, j], ha="center", va="center",
-                                   color="white" if cm[i, j] > threshold else "black", fontsize=8)
-
-        plt.savefig(cm_path + '.png')
-        print('\nSaved confusion matrix', cm_path)
+    # if save_confusion_matrix:
+    #     print('\nToken-level evaluation of the best performing model, at epoch', epoch, '\n')
+    #
+    #     # Collect full entities
+    #     y_gold = collect_named_entities(golden_list_all)
+    #     y_pred = collect_named_entities(predict_list_all)
+    #
+    #     num_classes = len(set(golden_list_all))
+    #
+    #     if num_classes == 15:
+    #         encoded_classes = ['B-PER', 'I-PER',
+    #                    'B-ORG', 'I-ORG',
+    #                    'B-GPE', 'I-GPE',
+    #                    'B-LOC', 'I-LOC',
+    #                    'B-DRV', 'I-DRV',
+    #                    'B-EVT', 'I-EVT',
+    #                    'B-PROD', 'I-PROD']
+    #
+    #         targets = ['PER', 'ORG', 'GPE', 'LOC', 'DRV', 'EVT', 'PROD']
+    #
+    #     elif num_classes == 13:
+    #         encoded_classes = ['B-PER', 'I-PER',
+    #                    'B-ORG', 'I-ORG',
+    #                    'B-LOC', 'I-LOC',
+    #                    'B-DRV', 'I-DRV',
+    #                    'B-EVT', 'I-EVT',
+    #                    'B-PROD', 'I-PROD']
+    #
+    #         targets = ['PER', 'ORG', 'LOC', 'DRV', 'EVT', 'PROD']
+    #
+    #     else:
+    #         encoded_classes = ['B-PER', 'I-PER',
+    #                    'B-ORG', 'I-ORG',
+    #                    'B-GPE_ORG', 'I-GPE_ORG',
+    #                    'B-LOC', 'I-LOC',
+    #                    'B-GPE_LOC', 'I-GPE_LOC',
+    #                    'B-DRV', 'I-DRV',
+    #                    'B-EVT', 'I-EVT',
+    #                    'B-PROD', 'I-PROD']
+    #
+    #         targets = ['PER', 'ORG', 'GPE_ORG', 'LOC', 'GPE_LOC', 'DRV', 'EVT', 'PROD']
+    #
+    #     results = compute_metrics(y_gold, y_pred, targets)
+    #
+    #     print('Overall measures')
+    #     print(pd.DataFrame.from_dict(results[0]), end='\n\n')
+    #
+    #
+    #     for key, value in results[1:][0].items():
+    #         print(key)
+    #         print(pd.DataFrame.from_dict(value), end='\n\n')
+    #
+    #     print('Strict evaluation:')
+    #     strict_precision = results[0]['strict']['precision']
+    #     strict_recall = results[0]['strict']['recall']
+    #
+    #     strict_f1 = 2 * ((strict_precision * strict_recall) / (strict_precision + strict_recall))
+    #
+    #     print('Precision', strict_precision)
+    #     print('Recall', strict_recall)
+    #     print('F1', strict_f1)
+    #
+    #     cm = confusion_matrix(golden_list_all, predict_list_all, labels=encoded_classes)
+    #
+    #     print(cm)
+    #
+    #     cm[0, 0] = cm[0, 0] / 100
+    #
+    #     clf_report = classification_report(golden_list_all, predict_list_all, labels=encoded_classes)
+    #
+    #     macro_scores = precision_recall_fscore_support(golden_list_all, predict_list_all, labels=encoded_classes, average='macro')
+    #
+    #     print(clf_report)
+    #
+    #     print('\nMacro scores')
+    #     print(macro_scores)
+    #
+    #     cm_path = experiment_dir_name + '/confusion_matrix_' + name
+    #
+    #     with open(cm_path + '.tsv', 'w') as f1:
+    #         for row in cm:
+    #             for element in row:
+    #                 f1.write(str(element) + '\t')
+    #             f1.write('\n')
+    #
+    #     clf_report_path = experiment_dir_name + '/clf_report' + name
+    #
+    #     with open(clf_report_path + '.txt', 'w') as f2:
+    #         for row in clf_report.split('\n'):
+    #             f2.write(row + '\n')
+    #
+    #         f2.write('Macro\n')
+    #         f2.write('Precision\tRecall\tF1\tSupport\n')
+    #         f2.write('\t'.join([str(value) for value in macro_scores]))
+    #
+    #     plt.clf()
+    #     fig, ax = plt.subplots()
+    #     im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+    #
+    #
+    #     # We want to show all ticks...
+    #     ax.set_xticks(np.arange(len(encoded_classes)))
+    #     ax.set_yticks(np.arange(len(encoded_classes)))
+    #     # ... and label them with the respective list entries
+    #     ax.set_xticklabels(encoded_classes)
+    #     ax.set_yticklabels(encoded_classes)
+    #
+    #     # Rotate the tick labels and set their alignment.
+    #     plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+    #
+    #     threshold = cm.max() / 2
+    #
+    #     # Loop over data dimensions and create text annotations.
+    #     for i in range(len(encoded_classes)):
+    #         for j in range(len(encoded_classes)):
+    #             if i == j:
+    #                 text = ax.text(j, i, cm[i, j], ha="center", va="center",
+    #                                fontstyle='oblique',
+    #                                color="white" if cm[i, j] > threshold else "black", fontsize=8)
+    #
+    #             else:
+    #                 text = ax.text(j, i, cm[i, j], ha="center", va="center",
+    #                                color="white" if cm[i, j] > threshold else "black", fontsize=8)
+    #
+    #     plt.savefig(cm_path + '.png')
+    #     print('\nSaved confusion matrix', cm_path)
 
     right_num = len(right_full)
     golden_num = len(golden_full)
