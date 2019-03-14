@@ -7,6 +7,9 @@ from __future__ import print_function
 from __future__ import absolute_import
 import sys
 import numpy as np
+import gensim
+import zipfile
+
 
 def normalize_word(word):
     new_word = ""
@@ -196,24 +199,56 @@ def norm2one(vec):
 def load_pretrain_emb(embedding_path):
     embedd_dim = -1
     embedd_dict = dict()
-    with open(embedding_path, 'r', encoding="utf8") as file:
-        for line in file:
-            line = line.strip()
-            if len(line) == 0:
-                continue
-            tokens = line.split()
-            if embedd_dim < 0:
-                embedd_dim = len(tokens) - 1
-            else:
-                assert (embedd_dim + 1 == len(tokens))
-            embedd = np.empty([1, embedd_dim])
-            embedd[:] = tokens[1:]
-            if sys.version_info[0] < 3:
-                first_col = tokens[0].decode('utf-8')
-            else:
-                first_col = tokens[0]
-            embedd_dict[first_col] = embedd
-    return embedd_dict, embedd_dim
+
+    # TODO: Add load zip utility
+
+    print(embedding_path)
+
+    if embedding_path.endswith('.zip'):
+        with zipfile.ZipFile(embedding_path, mode='r') as archive:
+            stream = archive.open("model.txt")
+
+            # Skipping first line
+            next(stream)
+
+            for line in stream:
+                line = line.strip()
+                if len(line) == 0 or len(line) == 2:
+                    continue
+                tokens = line.split()
+                if embedd_dim < 0:
+                    embedd_dim = len(tokens) - 1
+                else:
+                    assert (embedd_dim + 1 == len(tokens))
+                embedd = np.empty([1, embedd_dim])
+                embedd[:] = tokens[1:]
+                if sys.version_info[0] < 3:
+                    first_col = tokens[0].decode('utf-8')
+                else:
+                    first_col = tokens[0]
+                embedd_dict[first_col] = embedd
+
+        return embedd_dict, embedd_dim
+
+    else:
+        with open(embedding_path, 'r', encoding="utf8") as file:
+            for line in file:
+                line = line.strip()
+                if len(line) == 0 or len(line) == 2:
+                    continue
+                tokens = line.split()
+                if embedd_dim < 0:
+                    embedd_dim = len(tokens) - 1
+                else:
+                    assert (embedd_dim + 1 == len(tokens))
+                embedd = np.empty([1, embedd_dim])
+                embedd[:] = tokens[1:]
+                if sys.version_info[0] < 3:
+                    first_col = tokens[0].decode('utf-8')
+                else:
+                    first_col = tokens[0]
+                embedd_dict[first_col] = embedd
+        return embedd_dict, embedd_dim
 
 if __name__ == '__main__':
     a = np.arange(9.0)
