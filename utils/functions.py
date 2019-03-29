@@ -9,6 +9,7 @@ import sys
 import numpy as np
 import gensim
 import zipfile
+import timeit
 
 
 def normalize_word(word):
@@ -200,9 +201,7 @@ def load_pretrain_emb(embedding_path):
     embedd_dim = -1
     embedd_dict = dict()
 
-    # TODO: Add load zip utility
-
-    print(embedding_path)
+    start = timeit.default_timer()
 
     if embedding_path.endswith('.zip'):
         with zipfile.ZipFile(embedding_path, mode='r') as archive:
@@ -222,11 +221,20 @@ def load_pretrain_emb(embedding_path):
                     assert (embedd_dim + 1 == len(tokens))
                 embedd = np.empty([1, embedd_dim])
                 embedd[:] = tokens[1:]
-                if sys.version_info[0] < 3:
+                # if sys.version_info[0] < 3:
+                #     first_col = tokens[0].decode('utf-8')
+                # else:
+                try:
                     first_col = tokens[0].decode('utf-8')
-                else:
-                    first_col = tokens[0]
+
+                except UnicodeDecodeError:
+                    continue
+
                 embedd_dict[first_col] = embedd
+
+        end = timeit.default_timer()
+
+        print('Pre-trained embedding model loaded in', end - start, 'seconds')
 
         return embedd_dict, embedd_dim
 
